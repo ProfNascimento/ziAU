@@ -1,1 +1,6 @@
-# ziAU
+# Zero-Inflated Alpha Unit (ziAU) Regression with Spatially Varying Coefficients
+
+This repository is associated with a new regression model with Geographically Weighted Regression (GWR) specification yielding a spatially varying model considering zero-inflated AU law (GWR-ziAU), with the inflation probability and the continuous component depend on covariates, allowing vary smoothly over space. The study was motivated by the unveal of Cobalt (Co) concentration deposit in northern Chile (surroundings of Copiapó city), showing that the proposed model (GWR-ziAU) captures spatial heterogeneity in both the continuous and inflated components, and attains explainability with competitive predictive performance. The proposed model facilitates decision-making in calculating the viability of Cobalt extraction in the studied zone, with data-driven mineralogy paragenesis, taking into account the probabilities/traces of geochemical elements with geographically patterns.
+
+The spatial information is explored using georeferenced UTM coordinates (the Figure below shows the obtained samples) and consists of proportional measurements for 41 geochemical elements. 
+![Image](https://github.com/user-attachments/assets/82878ff8-4e4c-4d34-8a3b-536442d9d81f)
