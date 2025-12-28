@@ -4,17 +4,16 @@ library(caret)
 
 set.seed(123)
 
-## IMPORTACION DE DATOS
+## DATA IMPORT
 DB=read.csv("https://raw.githubusercontent.com/ProfNascimento/ziAU/refs/heads/main/Cobalt.csv",sep=";")
 
 #-------------------------------------------------------------------------------#
-# PREPARACION BASE DE DATOS (HOLD OUT)
-# ANALISIS DE COMPONENTES PRINCIPALES (PCA) --Escalada--
+# (HOLD OUT)
+# (PCA) --Scaled--
 
 fit.pca <- prcomp(DB[,-c(1:4,18)], scale. = T, center = T)
 
-# BASE FULL COMPONENTES
-
+# SET + FULL COMPONENTES
 DB0=cbind(V1=DB$Co/10,                 # TRANSFORMAR Y
           fit.pca$x,                        # PCs (Nuevos Xs)
           scale(DB[,-c(1:4,18)]),   # Elementos Geoquimicos Normalizados
@@ -30,9 +29,9 @@ DB_test <- DB0[-indices, ]
 
 #------------------------------------------------------------------------------#
 
-# MODELO GWR-ZIAU
+# GWR-ZIAU MODEL
 #######################################################################
-#  GWR–ZIAU  — PARTE 1: utilidades, densidades y familias
+#  GWR–ZIAU  — PART 1: utilidades, densidades y familias
 #######################################################################
 
 ## ---------- utilidades básicas  ----
@@ -487,7 +486,7 @@ gwr.ziau.wt <- function(y, X, bw, W,                 # W: n×n (columnas = focos
 }
 
 ## -------------------------------------------------------------------
-##  Contribución de CV (LOOCV rápido, ν global fijo)
+##  Contribution CV (LOOCV fast, ν global)
 ## -------------------------------------------------------------------
 ggwr.ziau.cv.contrib <- function(bw, X, Y,
                                  kernel="bisquare", adaptive=FALSE,
@@ -536,7 +535,7 @@ ggwr.ziau.cv.contrib <- function(bw, X, Y,
 }
 
 ## -------------------------------------------------------------------
-##  Objetivo genérico de CV (para optimize)
+##  Objective Genéric CV (optimize)
 ## -------------------------------------------------------------------
 ggwr.ziau.cv <- function(bw, X, Y,
                          kernel="bisquare", adaptive=FALSE,
@@ -552,7 +551,7 @@ ggwr.ziau.cv <- function(bw, X, Y,
 }
 
 ## -------------------------------------------------------------------
-##  Objetivo AICc (para optimize) usando gwr.ziau.wt
+##  AICc (optimize) using gwr.ziau.wt
 ## -------------------------------------------------------------------
 ggwr.ziau.aic <- function(bw, X, Y,
                           kernel="bisquare", adaptive=FALSE,
@@ -591,7 +590,7 @@ ggwr.ziau.aic <- function(bw, X, Y,
 }
 
 ## -------------------------------------------------------------------
-##  Selección de ancho de banda para ZIAU
+##  Band for the ZIAU
 ## -------------------------------------------------------------------
 bw.ggwr.ziau <- function(formula, data, approach = "CV",
                          kernel = "bisquare", adaptive = FALSE,
@@ -754,7 +753,7 @@ ggwr.ziau.basic <- function(formula, data,                 # especificación
 }
 
 #######################################################################
-#  MÉTODOS S3  para visualizacion
+#  MÉTODOS S3 (INFOVIS)
 #######################################################################
 ## ---------- print.ggwrm --------------------------------------------
 print.ggwrm <- function(x, ...){
@@ -819,7 +818,7 @@ plot.ggwrm <- function(x,
 }
 
 #------------------------------------------------------------------------------#
-# Funcion para predicciones 
+# Function Predictions 
 ## ===============================================================
 ##  MÉTODO S3: predict.ggwrm  (GWR–ZIAU, MLE local, sin nu.cut)
 ## ===============================================================
@@ -1102,29 +1101,24 @@ predict.ggwrm <- function(object,
 registerS3method("predict", "ggwrm", predict.ggwrm)
 
 
-
-
-
 # -------- registrar métodos S3 (por si el script se 'sourcea' a mitad) -----
 registerS3method("print",       "ggwrm", print.ggwrm)
 registerS3method("as.data.frame","ggwrm", as.data.frame.ggwrm)
 registerS3method("plot",        "ggwrm", plot.ggwrm)
 
 #--------------------------------------------------------#
-# MODELOS (ESPECIFICACIONES)
-
-# GWR-ZIAU FULL #1 NU= FULL PCA; Alpha = Coordenadas| Enlace: Logit (nu); log(alpha)
-# GWR-ZIAU FULL #2 NU= FULL PCA; Alpha = Coordenadas| Enlace: probit (nu); log(alpha)
-# GWR-ZIAU FULL #3 NU= Coordenadas; Alpha = FULL PCA| Enlace: logit (nu); log(alpha)
-# GWR-ZIAU  #4 NU= Coordenadas; Alpha = FULL PCA| Enlace: probit (nu); log(alpha)
-# GWR-ZIAU  #5 NU= PCA; Alpha = PCA | Enlace: logit (nu); log(alpha)
+#------------MODELS (ESPECIFICATIONS)--------------------#
+# GWR-ZIAU  #1 NU= FULL PCA; Alpha = LAT,LON | Link: Logit (nu); log(alpha)
+# GWR-ZIAU  #2 NU= LAT, LON; Alpha = FULL PCA| Link: logit (nu); log(alpha)
+# GWR-ZIAU  #4 NU= LAT, LON; Alpha = FULL PCA| Link: probit (nu); log(alpha)
+# GWR-ZIAU  #5 NU= FULL PCA; Alpha = FULL PCA| Link: logit (nu); log(alpha)
 
 #------------------------------------------------------------------------------#
-# ENTRENAMIENTO DEL MODELO 
+# TRAINING MODELO 
 #-----------------------------------------------------------------------------#
 # CREACION SPATIALPOINTS DATAFRAME
 
-#GWR-ZIAU FULL #1 y # GWR-ZIAU FULL #2 
+#GWR-ZIAU FULL #1 
 spCob <- SpatialPointsDataFrame(
   coords      = data.frame(LON = DB_train$LON, LAT = DB_train$LAT),
   data        = data.frame(
@@ -1136,8 +1130,7 @@ spCob <- SpatialPointsDataFrame(
   proj4string = CRS("")
 )
 
-# GWR-ZIAU FULL #3| GWR-ZIAU  #4|  GWR-ZIAU  #5| 
-
+# GWR-ZIAU FULL #2| GWR-ZIAU  #3|  GWR-ZIAU  #4| 
 spCob2 <- SpatialPointsDataFrame(
   coords = data.frame(LON = DB_train$LON, LAT = DB_train$LAT),
   data   = data.frame(
@@ -1161,10 +1154,8 @@ form_nu_FULL_PCA    <- as.formula(paste("~", paste(paste0("PC", 1:40), collapse 
 
 
 ################################################################################
-
-# SELECCION DE BANDA
-
-#GWR-ZIAU FULL #1 
+# SPATIAL GRID
+# GWR-ZIAU.1 
 set.seed(123)
 bw_cob1 <- bw.ggwr.ziau(
   formula    = form_alpha_coordenadas,
@@ -1177,20 +1168,8 @@ bw_cob1 <- bw.ggwr.ziau(
   formula.nu = form_nu_FULL_PCA,
   c_inflate  = 0
 )
-# GWR-ZIAU FULL #2 
-set.seed(123)
-bw_cob2 <- bw.ggwr.ziau(
-  formula    = form_alpha_coordenadas,
-  data       = spCob,
-  approach   = "CV",
-  kernel     = "gaussian", 
-  adaptive   = FALSE,
-  link.alpha = "log",
-  link.nu    = "probit",
-  formula.nu = form_nu_FULL_PCA,
-  c_inflate  = 0
-)
-# GWR-ZIAU FULL #3
+
+# GWR-ZIAU.2
 set.seed(123)
 bw_cob3 <- bw.ggwr.ziau(
   formula    = form_alpha_FULL_PCA,
@@ -1204,8 +1183,7 @@ bw_cob3 <- bw.ggwr.ziau(
   c_inflate  = 0
 )
 
-# GWR-ZIAU  #4
-
+# GWR-ZIAU.3
 set.seed(123)
 bw_cob4 <- bw.ggwr.ziau(
   formula    = form_alpha_FULL_PCA,
@@ -1219,8 +1197,7 @@ bw_cob4 <- bw.ggwr.ziau(
   c_inflate  = 0
 )
 
-# GWR-ZIAU  #5
-
+# GWR-ZIAU.4
 set.seed(123)
 bw_cob5 <- bw.ggwr.ziau(
   formula    = form_alpha_FULL_PCA,
@@ -1234,14 +1211,9 @@ bw_cob5 <- bw.ggwr.ziau(
   c_inflate  = 0
 )
 
-
-
-
 ###############################################################################
-
-# AJUSTE(FIT)
-
-#GWR-ZIAU FULL #1 
+## FITTING MODELS
+# GWR-ZIAU.1 
 fit_cob <- ggwr.ziau.basic(
   formula     = form_alpha_coordenadas,
   data        = spCob,
@@ -1257,23 +1229,7 @@ fit_cob <- ggwr.ziau.basic(
 )
 print(fit_cob)
 
-#GWR-ZIAU FULL #2 
-fit_cob2 <- ggwr.ziau.basic(
-  formula     = form_alpha_coordenadas,
-  data        = spCob,
-  bw          = bw_cob2,
-  kernel      = "gaussian",
-  adaptive    = FALSE,
-  cv          = TRUE,
-  link.alpha  = "log",
-  link.nu     = "probit", 
-  formula.nu  = form_nu_FULL_PCA,
-  nu.cut      = 0.4071132,
-  c_inflate   = 0
-)
-print(fit_cob2)
-
-#GWR-ZIAU FULL #3 
+# GWR-ZIAU.2 
 fit_cob3 <- ggwr.ziau.basic(
   formula     = form_alpha_FULL_PCA,
   data        = spCob2,
@@ -1289,7 +1245,7 @@ fit_cob3 <- ggwr.ziau.basic(
 )
 print(fit_cob3)
 
-# GWR-ZIAU  #4
+# GWR-ZIAU.3
 fit_cob4 <- ggwr.ziau.basic(
   formula     = form_alpha_FULL_PCA,
   data        = spCob2,
@@ -1305,7 +1261,7 @@ fit_cob4 <- ggwr.ziau.basic(
 )
 print(fit_cob4)
 
-# GWR-ZIAU  #5
+# GWR-ZIAU.4
 fit_cob5 <- ggwr.ziau.basic(
   formula     = form_alpha_FULL_PCA,
   data        = spCob2,
