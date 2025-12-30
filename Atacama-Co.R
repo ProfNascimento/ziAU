@@ -72,55 +72,9 @@ DB_train <- DB0[indices, ]
 DB_test <- DB0[-indices, ]
 
 #############################################################################
-source("GWR-ziAU.R", local = TRUE)
-#-----------------------------------------------------------------------------#
-# CREACION SPATIALPOINTS DATAFRAME
-spCob <- SpatialPointsDataFrame(
-  coords      = data.frame(LON = DB_train$LON, LAT = DB_train$LAT),
-  data        = data.frame(
-    y     = DB_train$Co,
-    LON  = DB_train$LON,
-    LAT = DB_train$LAT,
-    DB_train[, paste0("PC", 1:40)]
-  ),
-  proj4string = CRS("")
-)
-
-###############################################################################
-# FORMULAS
-form_coord <- ~ LON + LAT
-form_FULL_PCA <- as.formula(paste("~", paste(paste0("PC", 1:40), collapse = " + ")))
-
-################################################################################
 ## MODEL (ESPECIFICACION)
+source("ziAU-models.R", local = TRUE)
 # GWR-ZIAU FULL 4 (NU & Alpha = FULL PCA); Enlace: Logit(nu) & log(alpha)
-set.seed(123)
-bw_cob1 <- bw.ggwr.ziau(
-  formula    = update(form_FULL_PCA,y ~ .),
-  data       = spCob,
-  approach   = "CV",
-  kernel     = "gaussian", 
-  adaptive   = FALSE,
-  link.alpha = "log",
-  link.nu    = "logit",
-  formula.nu = form_FULL_PCA,
-  c_inflate  = 0
-)
-
-# FIT GWR-ziAU
-fit_cob5 <- ggwr.ziau.basic(
-  formula     = update(form_FULL_PCA,y ~ .),
-  data        = spCob,
-  bw          = bw_cob1,
-  kernel      = "gaussian",
-  adaptive    = FALSE,
-  cv          = TRUE,
-  link.alpha  = "log",
-  link.nu     = "logit", 
-  formula.nu  = form_FULL_PCA,
-  nu.cut      = 0.7,
-  c_inflate   = 0
-)
 print(fit_cob5)
 
 # MODELO FULL 4 (TRAIN SET)
@@ -164,11 +118,22 @@ legend("top",c("GWR-ziAU.#1","GWR-ziAU.#2","GWR-ziAU.#3","GWR-ziAU.#4"),col=c("b
 
 #------------------------------------------------------------------------------#
 # MODELS' PERFORMANCE (TEST SET)
-# GWR-ZIAU FULL 4
+# BEST GWR-ZIAU
 ## Ancla fórmulas y TRAIN dentro del fit
-attr(fit_cob, "form_alpha") <- form_alpha_FULL_PCA
-attr(fit_cob, "form_nu")    <- form_nu_FULL_PCA
-attr(fit_cob, "sp_train")   <- spCob
+attr(fit_cob5, "form_alpha") <- form_alpha_FULL_PCA
+attr(fit_cob5, "form_nu")    <- form_nu_FULL_PCA
+attr(fit_cob5, "sp_train")   <- spCob
+
+spTe <- SpatialPointsDataFrame(
+  coords = data.frame(LON = DB_test$LON, LAT = DB_test$LAT),
+  data   = data.frame(
+      y     = DB_test$V1,
+      LON  = DB_test$LON,
+      LAT = DB_test$LAT,
+      DB_test[, paste0("PC", 1:40), drop = FALSE]
+  ),
+  proj4string = CRS("")
+)
 
 pred_out <- predict(
   fit_cob5,
@@ -247,6 +212,12 @@ fit_cob5$SDF %>% as.data.frame() %>% mutate(Zone=DB_train$Zone) %>% filter(Zone 
   ) +
   coord_equal()
 
+# Average NU (per zone)
+as.data.frame(fit_cob5$SDF) %>% 
+  mutate(Zone=DB$ZONE[indices]) %>% 
+  group_by(Zone) %>%
+  summarise(across(nu, mean, na.rm = TRUE))
+
 ## PCs EXPLICABILITY (DB => RAW DATA  &  DB0 => SCALED DATA)
 # Quantiles -- Colbalt’s geochemical affinity elements 
 vars <- c("Ni", "Cu", "Fe", "As", "Bi", "MnO", "Pb", "Zn")
@@ -266,9 +237,10 @@ probs <- c(0.1, 0.25, 0.5, 0.75, 0.9)
 
 Q_raw <- DB0 %>% #filter(V84==3)  %>%     # FILTER PER ZONE 
   select(all_of(vars)) %>%
-  summarise(
+  reframe(
     across(everything(),
-           ~ quantile(.x, probs = probs, na.rm = TRUE))
+           ~ c(mean = mean(.x, na.rm = TRUE),
+               quantile(.x, probs = probs, na.rm = TRUE)) )
   ) %>%
   as.matrix()
 
@@ -276,10 +248,9 @@ L <- fit.pca$rotation[vars, ]
 PCA_quantiles <- Q_raw %*% L
 
 nu_hat <- 1 / (1 + exp(-(PCA_quantiles %*% tail(fit_cob5$glms$beta.nu, -1) + fit_cob5$glms$beta.nu[1])))
+round(nu_hat,4)
+
 a=exp(PCA_quantiles %*% colMeans(fit_cob5$glms$beta.alpha[, -1]) + mean(fit_cob5$glms$beta.alpha[,1]))
-
-#cbind(seq(0.1, 0.9,by=0.01),round(nu_hat,4))
-
 # Conditional Mean (ziAU w/ Co correction - x10)
 ifelse(nu_hat > 0.4676828, 0,  #based on the threshold
        (1-nu_hat)*2*exp(a^2/2)*( a*dnorm(a)+(1-pnorm(a))-2*a*dnorm(a)+a^2*(1-pnorm(a)) )*10)
@@ -306,14 +277,14 @@ vars3  <- c("Au","P2O5","Sn","Mo")
 probs <- c(0.1, 0.25, 0.5, 0.75, 0.9)
 
 Q_raw3 <- DB0 %>%
-  select(all_of(vars)) %>%
+  select(all_of(vars3)) %>%
   summarise(
     across(everything(),
            ~ quantile(.x, probs = probs, na.rm = TRUE))
   ) %>%
   as.matrix()
 
-L3 <- fit.pca$rotation[vars, ]
+L3 <- fit.pca$rotation[vars3, ]
 PCA_quantiles3 <- Q_raw3 %*% L3
 
 nu_hat3 <- 1 / (1 + exp(-(PCA_quantiles3 %*% tail(fit_cob5$glms$beta.nu, -1) + fit_cob5$glms$beta.nu[1])))
@@ -321,49 +292,55 @@ nu_hat3 <- 1 / (1 + exp(-(PCA_quantiles3 %*% tail(fit_cob5$glms$beta.nu, -1) + f
 ##########################
 vars4  <- c("Cl","V","TiO2","Nb","Th","U")
 Q_raw4 <- DB0 %>%
-  select(all_of(vars)) %>%
+  select(all_of(vars4)) %>%
   summarise(
     across(everything(),
            ~ quantile(.x, probs = probs, na.rm = TRUE))
   ) %>%
   as.matrix()
-L4 <- fit.pca$rotation[vars, ]
+L4 <- fit.pca$rotation[vars4, ]
 PCA_quantiles4 <- Q_raw4 %*% L4
 nu_hat4 <- 1 / (1 + exp(-(PCA_quantiles4 %*% tail(fit_cob5$glms$beta.nu, -1) + fit_cob5$glms$beta.nu[1])))
 
 vars5  <- c("La","Y")
 Q_raw5 <- DB0 %>%
-  select(all_of(vars)) %>%
+  select(all_of(vars5)) %>%
   summarise(
     across(everything(),
            ~ quantile(.x, probs = probs, na.rm = TRUE))
   ) %>%
   as.matrix()
-L5 <- fit.pca$rotation[vars, ]
+L5 <- fit.pca$rotation[vars5, ]
 PCA_quantiles5 <- Q_raw5 %*% L5
 nu_hat5 <- 1 / (1 + exp(-(PCA_quantiles5 %*% tail(fit_cob5$glms$beta.nu, -1) + fit_cob5$glms$beta.nu[1])))
 
 vars6  <- c("K2O","Rb")
 Q_raw6 <- DB0 %>%
-  select(all_of(vars)) %>%
+  select(all_of(vars6)) %>%
   summarise(
     across(everything(),
            ~ quantile(.x, probs = probs, na.rm = TRUE))
   ) %>%
   as.matrix()
-L6 <- fit.pca$rotation[vars, ]
+L6 <- fit.pca$rotation[vars6, ]
 PCA_quantiles6 <- Q_raw6 %*% L6
 nu_hat6 <- 1 / (1 + exp(-(PCA_quantiles6 %*% tail(fit_cob5$glms$beta.nu, -1) + fit_cob5$glms$beta.nu[1])))
 
+a6=exp(PCA_quantiles6 %*% colMeans(fit_cob5$glms$beta.alpha[, -1]) + mean(fit_cob5$glms$beta.alpha[,1]))
+# Conditional Mean (ziAU w/ Co correction - x10)
+ifelse(nu_hat6 > 0.4676828, 0,  #based on the threshold
+       (1-nu_hat6)*2*exp(a6^2/2)*( a6*dnorm(a6)+(1-pnorm(a6))-2*a6*dnorm(a6)+a6^2*(1-pnorm(a6)) )*10)
+
+
 vars7  <- c("CaO","MgO","Sr","Ba")
 Q_raw7 <- DB0 %>%
-  select(all_of(vars)) %>%
+  select(all_of(vars7)) %>%
   summarise(
     across(everything(),
            ~ quantile(.x, probs = probs, na.rm = TRUE))
   ) %>%
   as.matrix()
-L7 <- fit.pca$rotation[vars, ]
+L7 <- fit.pca$rotation[vars7, ]
 PCA_quantiles7 <- Q_raw7 %*% L7
 nu_hat7 <- 1 / (1 + exp(-(PCA_quantiles7 %*% tail(fit_cob5$glms$beta.nu, -1) + fit_cob5$glms$beta.nu[1])))
 
@@ -372,14 +349,18 @@ vars8  <- c("Al2O3","SiO2","Cr","Ta","Hf","Zr")
 probs <- c(0.1, 0.25, 0.5, 0.75, 0.9)
 
 Q_raw8 <- DB0 %>%
-  select(all_of(vars)) %>%
+  select(all_of(vars8)) %>%
   summarise(
     across(everything(),
            ~ quantile(.x, probs = probs, na.rm = TRUE))
   ) %>%
   as.matrix()
 
-L8 <- fit.pca$rotation[vars, ]
-PCA_quantiles4 <- Q_raw8 %*% L8
+L8 <- fit.pca$rotation[vars8, ]
+PCA_quantiles8 <- Q_raw8 %*% L8
 
 nu_hat8 <- 1 / (1 + exp(-(PCA_quantiles8 %*% tail(fit_cob5$glms$beta.nu, -1) + fit_cob5$glms$beta.nu[1])))
+a8=exp(PCA_quantiles8 %*% colMeans(fit_cob5$glms$beta.alpha[, -1]) + mean(fit_cob5$glms$beta.alpha[,1]))
+# Conditional Mean (ziAU w/ Co correction - x10)
+ifelse(nu_hat8 > 0.4676828, 0,  #based on the threshold
+       (1-nu_hat8)*2*exp(a8^2/2)*( a8*dnorm(a8)+(1-pnorm(a8))-2*a8*dnorm(a8)+a8^2*(1-pnorm(a8)) )*10)
